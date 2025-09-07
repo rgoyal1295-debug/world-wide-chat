@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Worldwide Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .chat-container {
+            width: 100%;
+            max-width: 640px;
+            height: 90vh;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .header {
+            padding: 1rem;
+            background-color: #e5e7eb;
+            border-bottom: 1px solid #d1d5db;
+            text-align: center;
+        }
+        .chat-window {
+            flex-grow: 1;
+            padding: 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .message {
+            display: flex;
+            flex-direction: column;
+            gap: 0.125rem;
+        }
+        .message-content {
+            background-color: #f3f4f6;
+            padding: 0.5rem 1rem;
+            border-radius: 12px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .message-meta {
+            font-size: 0.75rem;
+            color: #6b7280;
+        }
+        .input-container {
+            padding: 1rem;
+            border-top: 1px solid #d1d5db;
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        #messageInput {
+            flex-grow: 1;
+            padding: 0.5rem 1rem;
+            border: 1px solid #d1d5db;
+            border-radius: 12px;
+            outline: none;
+        }
+        #sendButton {
+            padding: 0.5rem 1.25rem;
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+        .error-message {
+            color: #b91c1c;
+            font-weight: bold;
+            text-align: center;
+            padding: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="header">
+            <h1 class="text-xl font-bold">Worldwide Chat</h1>
+            <p class="text-sm text-gray-500 mt-1">You are: <span id="userIdDisplay"></span></p>
+        </div>
+        <div class="chat-window" id="chatWindow"></div>
+        <div class="input-container">
+            <input type="text" id="messageInput" placeholder="Type a message...">
+            <button id="sendButton">Send</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
+        // Supabase configuration
+        const SUPABASE_URL = 'https://bwjqtoqrybgnwjecqfjr.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3anF0b3FyeWJnbndqZWNxZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcyMzI1MzMsImV4cCI6MjA3MjgwODUzM30.95f3_ht6r5ho6yFwQF0ovU1GturmOW6coDBCsdeI5pU';
+
+        // Global variables and elements
+        let userName;
+        const chatWindow = document.getElementById('chatWindow');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const userIdDisplay = document.getElementById('userIdDisplay');
+        let supabase = null;
+
+        const adjectives = ["Crimson", "Whispering", "Silent", "Dancing", "Majestic", "Humble", "Cosmic", "Glowing", "Swift"];
+        const nouns = ["Fox", "River", "Star", "Tree", "Mountain", "Ghost", "Echo", "Wave", "Comet"];
+
+        async function init() {
+            if (SUPABASE_URL === 'YOUR_SUPABASE_URL' || SUPABASE_ANON_KEY === 'YOUR_SUPABASE_ANON_KEY') {
+                const errorEl = document.createElement('div');
+                errorEl.className = 'error-message';
+                errorEl.textContent = 'Please configure your Supabase URL and anon key in the code to connect to the database.';
+                chatWindow.appendChild(errorEl);
+                console.error('Supabase not configured. Please replace the placeholder keys in the code.');
+                return;
+            }
+
+            try {
+                supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            } catch (error) {
+                console.error("Failed to initialize Supabase client:", error);
+                const errorEl = document.createElement('div');
+                errorEl.className = 'error-message';
+                errorEl.textContent = 'Failed to connect to Supabase. Please check your URL and key.';
+                chatWindow.appendChild(errorEl);
+                return;
+            }
+
+            userName = `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${nouns[Math.floor(Math.random() * nouns.length)]}`;
+            userIdDisplay.textContent = userName;
+            
+            await fetchMessages();
+            setupRealtime();
+        }
+
+        function displayErrorMessage(message) {
+            const errorEl = document.createElement('div');
+            errorEl.className = 'error-message';
+            errorEl.textContent = message;
+            chatWindow.appendChild(errorEl);
+        }
+        
+        async function fetchMessages() {
+            // Get all messages from the last 24 hours
+            const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+            const { data, error } = await supabase
+                .from('messages')
+                .select('*')
+                .gte('created_at', yesterday)
+                .order('created_at', { ascending: true });
+
+            if (error) {
+                console.error('Error fetching messages:', error);
+                displayErrorMessage('Error fetching messages. Please check your Supabase policies.');
+                return;
+            }
+
+            data.forEach(displayMessage);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        function setupRealtime() {
+            supabase
+                .channel('room_1')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+                    // Only display messages from the last 24 hours
+                    const now = new Date();
+                    const messageTime = new Date(payload.new.created_at);
+                    const diffInHours = (now - messageTime) / (1000 * 60 * 60);
+
+                    if (diffInHours <= 24) {
+                        displayMessage(payload.new);
+                        chatWindow.scrollTop = chatWindow.scrollHeight;
+                    }
+                })
+                .subscribe();
+        }
+
+        function displayMessage(messageData) {
+            const messageEl = document.createElement('div');
+            messageEl.className = 'message';
+            
+            const metaEl = document.createElement('div');
+            metaEl.className = 'message-meta';
+            const timestamp = new Date(messageData.created_at).toLocaleTimeString();
+            metaEl.textContent = `${messageData.user_name} at ${timestamp}`;
+
+            const contentEl = document.createElement('div');
+            contentEl.className = 'message-content';
+            contentEl.textContent = messageData.message_text;
+
+            messageEl.appendChild(metaEl);
+            messageEl.appendChild(contentEl);
+            chatWindow.appendChild(messageEl);
+        }
+
+        async function sendMessage() {
+            const text = messageInput.value.trim();
+            if (text === '') return;
+
+            const messageData = { user_name: userName, message_text: text };
+            messageInput.value = '';
+
+            try {
+                const { error } = await supabase
+                    .from('messages')
+                    .insert(messageData);
+
+                if (error) {
+                    console.error('Error sending message:', error);
+                    displayErrorMessage(`Error sending message: ${error.message}. Please check your Supabase policies.`);
+                    messageInput.value = text; // Restore message to input field
+                }
+            } catch (err) {
+                console.error("An unexpected error occurred:", err);
+                displayErrorMessage('An unexpected error occurred. Please check the console.');
+                messageInput.value = text; // Restore message to input field
+            }
+        }
+
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+        
+        window.onload = init;
+    </script>
+</body>
+</html>
