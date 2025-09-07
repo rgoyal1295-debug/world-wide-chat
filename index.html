@@ -144,7 +144,8 @@
 
             userName = `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${nouns[Math.floor(Math.random() * nouns.length)]}`;
             userIdDisplay.textContent = userName;
-            
+
+            await deleteOldMessages();
             await fetchMessages();
             setupRealtime();
         }
@@ -154,6 +155,21 @@
             errorEl.className = 'error-message';
             errorEl.textContent = message;
             chatWindow.appendChild(errorEl);
+        }
+
+        async function deleteOldMessages() {
+            // Calculate the timestamp for 24 hours ago
+            const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+            
+            // Delete messages older than 24 hours
+            const { error } = await supabase
+                .from('messages')
+                .delete()
+                .lt('created_at', twentyFourHoursAgo);
+
+            if (error) {
+                console.error('Error deleting old messages:', error);
+            }
         }
         
         async function fetchMessages() {
